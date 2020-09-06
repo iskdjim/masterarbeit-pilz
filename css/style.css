@@ -1,0 +1,109 @@
+body{
+    font-family: arial;
+}
+
+.dygraph-legend{
+    width: 110px;
+}
+
+#ledgend {
+    float:left;
+    margin-left:1030px;
+    position:fixed;
+    display:none;
+}
+
+#div_0, #div_1, #div_2{
+    width:1010px;
+    height:500px;
+    float:left;
+    margin-top:20px;
+}
+
+#options{
+    float:left;
+    margin-left:1240px;
+    position:fixed;
+    display:none;
+}
+
+.size-options {
+    cursor: pointer;
+    font-size:16px;
+    border-radius: 3px;
+    width:20px;
+    display: inline-block;
+    border:1px solid #000;
+    text-align: center;
+    font-weight: bold;
+    user-select: none; /* standard syntax */
+    -webkit-user-select: none; /* webkit (safari, chrome) browsers */
+    -moz-user-select: none; /* mozilla browsers */
+    -khtml-user-select: none; /* webkit (konqueror) browsers */
+    -ms-user-select: none; /* IE10+ */
+}
+
+.active-line{
+    text-decoration: underline;
+    font-weight: bold;
+}
+
+.delete-option {
+    cursor: pointer;
+    font-size:16px;
+    border-radius: 3px;
+    display: inline-block;
+    border:1px solid #000;
+    text-align: center;
+    font-weight: bold;
+}
+
+p.csvText{
+    width: 155px;
+    float: left;
+    padding-top:0;
+    margin-top:0;
+    margin-bottom:5px;
+}
+
+.size-options:hover, .delete-option:hover {
+    background-color: rgb(213, 208, 204);
+}
+
+.element{
+    width:240px;position:relative;height:20px;text-align: center;
+}
+
+.element .overall{
+    background-image:url("../img/bg-abweichung.png");border-left:2px solid black;border-right:2px solid black;width:200px;display:inline-block;text-align: center;height:20px;
+}
+
+.element .area{
+    width:0;height:20px;display:inline-block; background: rgba(15, 205, 122, 0.8)
+}
+
+.ledgendItem {
+    float:left;margin:0 10px 0 0;padding:0px;
+}
+
+.ledgendItem small, .areaDate small{
+    width:15px;
+    height:15px;
+    display:inline-block;
+    -webkit-border-radius: 5px;
+    -moz-border-radius: 5px;
+    border-radius: 5px;
+    margin-right:6px;
+}
+
+#secondInputHolder, #thirdInputHolder{
+    display:none;
+}
+
+#div_1, #div_2{
+    display:none;
+}
+
+#left-border-value, #right-border-value{
+    margin-right:10px;
+}

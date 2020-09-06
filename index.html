@@ -1,0 +1,919 @@
+<!DOCTYPE html>
+<html>
+    <script src="libs/jquery-3.4.1.min.js"></script>
+    <script src="libs/papaparse.min.js"></script>
+    <script src="libs/dygraphs.js"></script>
+    <link rel="stylesheet" href="css/dygraphs.css" />
+    <link rel="stylesheet" href="css/style.css" />
+<script>
+$(document).ready(function () {
+    var myRows = [];
+    let counter = 0;
+    let data = [[],[],[]];
+    let overall_points_data_deviations = [[],[],[]];
+    let combined_overall_points_data_deviations = [0,0,0];
+    let firstFileInput = document.querySelector('.firstFileInput');
+    let secondFileInput = document.querySelector('.secondFileInput');
+    let thirdFileInput = document.querySelector('.thirdFileInput');
+    let chartCount=0;
+
+    firstFileInput.addEventListener('change', parseFirstFile);
+    secondFileInput.addEventListener('change', parseSecondFile);
+    thirdFileInput.addEventListener('change', parseThirdFile);
+
+    let visibileStatus = [];
+    let chartData = [];
+    let g;
+    let highlight_start = [];
+    let highlight_end = [];
+    let highlight_active = [];
+    let active_highlight = -1;
+    let first_render = 1;
+    let chartsExist = [0,0,0];
+    let show_deviation_details = false;
+    let filterDates = [];
+    let nullEinsKombi = [];
+
+    function parseFirstFile() {
+        parseFile(firstFileInput, 0);
+        $('#secondInputHolder').show();
+        $('#ledgend').show();
+    }
+    function parseSecondFile() {
+        $('#div_1').show()
+        parseFile(secondFileInput, 1);
+        $('#thirdInputHolder').show();
+    }
+    function parseThirdFile() {
+        $('#div_2').show();
+        parseFile(thirdFileInput, 2);
+    }
+
+    function parseFile(fileInput, number) {
+        if (number == 0) {
+            visibileStatus = [];
+            $('#ledgend .days').empty();
+        }
+
+        myRows = [];
+        counter = 0;
+        for(var i = 0; i < fileInput.files.length; i++){
+            myRows.push([]);
+            let counter = i;
+            
+            Papa.parse(fileInput.files[i], {
+                download: true,
+                header: true,
+                keepEmptyRows: false,
+                    skipEmptyLines: true,
+                    step: function(row) {
+                        //  push the row data into the array
+
+                        myRows[counter].push(row.data);
+
+                },
+                complete: function(results) {
+                    if(fileInput.files.length == counter+1) {
+
+                        chartCount++;
+                        chart_type = $("#type_"+number).val();
+                        $('<h3>'+chart_type+':</h3>').insertBefore('#div_'+number);
+                        chartData[number] = myRows;
+                        chartsExist[number] = 1;
+                        renderChart(true, number);
+                        if(number > 0) {
+                            drawHighlights()
+                        }
+                    }
+                }
+            });
+        }
+    }
+
+    download_img = function(el) {
+        let canvas = document.querySelector('canvas');
+        let image = canvas.toDataURL("image/jpg");
+        el.href = image;
+    };
+
+
+    function drawHighlights() {
+        for(let i = 0; i <= 2; i++) {
+            if (chartsExist[i]) {
+                renderChart(false, i);
+            }
+        }
+
+
+
+        $('#deviations').html("");
+        $('#deviations-plot').html("");
+        // code for deviations for each single day
+        //let area_deviations = getPointsDeviationsForActiveArea();
+        /*$.each(visibileStatus, function( index, value ) {
+
+            if (value) {
+                let date = $("#series_" + index).next().text();
+                let date_bg_color = $("#series_" + index).next().find('small').css('backgroundColor');
+
+                $('#deviations').append("<p class='areaDate'><small style='background:" + date_bg_color + "'></small>" + date + "</p>");
+                for (let i = 0; i <= 2; i++) {
+                    if (overall_points_data_deviations[i].length > 0) {
+                        if (show_deviation_details) {
+                            $('#deviations').append("<p style='margin:0'><u>Overall Deviation:</u> " + overall_points_data_deviations[i][index] + "</p>");
+                            $('#deviations').append("<p style='margin:0'><u>Area Deviation:</u> " + area_deviations[i][index] + "</p>");
+                        }
+                        let width_area = 200 / overall_points_data_deviations[i][index] * area_deviations[i][index];
+                        let overall_style = "";
+                        if (width_area > 200) {
+                            overall_style = "margin-left:"+(200-width_area)/2 + "px;background: rgba(255, 0, 0, 0.8)";
+                        }
+
+                        $('#deviations').append('<div id="deviations-plot" style="margin-bottom:10px;"><div class="element"><div class="overall"><div class="area" style="width:' + width_area + 'px;' + overall_style + '"></div> </div></div></div>');
+                    }
+                }
+            }
+        });*/
+
+        let combined_area_deviations = getCombinedPointsDeviationsForActiveArea();
+
+        for (let i = 0; i <= 2; i++) {
+            if (chartsExist[i]) {
+                let width_area = 200 / combined_overall_points_data_deviations[i] * combined_area_deviations[i];
+                let overall_style = "";
+                if (width_area > 200) {
+                    overall_style = "margin-left:" + (200 - width_area) / 2 + "px;background: rgba(255, 0, 0, 0.8)";
+                }
+                $('#deviations').append('<div id="deviations-plot" style="margin-bottom:10px;"><div class="element"><div class="overall"><div class="area" style="width:' + width_area + 'px;' + overall_style + '"></div> </div></div></div>');
+            }
+        }
+
+        if (active_highlight >= 0) {
+            $('#left-border-value').text(getTimeFromPixel(highlight_start[active_highlight]));
+            $('#right-border-value').text(getTimeFromPixel(highlight_end[active_highlight]));
+        }
+        let canvasElements = [];
+        for(let j = 0; j <= 2; j++) {
+            if (chartsExist[j]) {
+                canvasElements.push($("#div_"+j+" canvas")[0].getContext('2d'));
+            }
+        }
+        canvasElements.push($("#div_0 canvas")[0].getContext('2d'));
+
+        for (var i = 0; i < highlight_start.length; i++) {
+            var left = highlight_start[i];
+            var right = highlight_end[i];
+
+            if(highlight_active[i] == 1) {
+                for (let j = 0; j <= 2; j++) {
+                    if (chartsExist[j]) {
+                        canvasElements[j].fillStyle = "rgba(15, 205, 122, 0.6)";
+                    }
+                }
+                $('#active-left').val(left);
+                $('#active-right').val(right);
+            }else if(highlight_active[i] == 2) {
+                for(let j = 0; j <= 2; j++) {
+                    if (chartsExist[j]) {
+                        canvasElements[j].fillStyle = "rgba(0, 0, 0, 0.1)";
+                    }
+                }
+            }else {
+                for(let j = 0; j <= 2; j++) {
+                    if (chartsExist[j]) {
+                        canvasElements[j].fillStyle = "rgba(255, 255, 102, 0.6)";
+                    }
+                }
+            }
+
+            for(let j = 0; j <= 2; j++) {
+                if (chartsExist[j]) {
+                    canvasElements[j].fillRect(left, 0, right - left, 480);
+                }
+            }
+        }
+    }
+
+    checkHighlightOnClick = function(e, x, pts) {
+        active_highlight = -1;
+        x = e.offsetX;
+        for (var i = 0; i < highlight_start.length; i++) {
+            if (highlight_active[i] != 2) {
+                var left = highlight_start[i];
+                var right = highlight_end[i];
+
+                if (x >= left && x <= right) {
+                    $('#options').show();
+                    highlight_active[i] = 1;
+                    active_highlight = i;
+                } else {
+                    highlight_active[i] = 0;
+                }
+            }
+        }
+
+        if (active_highlight == -1) {
+            $('#options').hide();
+        }
+
+        drawHighlights();
+    };
+
+    $("#active-delete").click(function(){
+        highlight_start[active_highlight] = 0;
+        highlight_end[active_highlight] = 0;
+        active_highlight = -1;
+        $("#options").hide();
+        drawHighlights()
+    });
+
+    $("#brute-force-all").click(function(){
+        let days = data[0][0].length-1;
+        showausw(days,2,1,1);
+
+        let best_deviation = 1;
+        let best_left_point = 0;
+        let best_right_point = 0;
+        let overallCounter = 0;
+        let best_null_eins_kombi = "";
+
+        let today = new Date();
+        let time = today.getHours() + ":" + today.getMinutes() + ":" + today.getSeconds();
+
+        for(let i = 0; i<nullEinsKombi.length; i++) {
+            visibileStatus = nullEinsKombi[i].split('');
+            for(let j = 0; 0 <= days-visibileStatus.length; j++) {
+                visibileStatus.push(0);
+            }
+            //console.log(visibileStatus);
+            let data = bruteForceGetCombinedPointsDeviationsForActiveArea();
+            if (data[0] < best_deviation && data[0] > 0) {
+                best_deviation = data[0];
+                best_left_point = data[1];
+                best_right_point = data[2];
+                best_null_eins_kombi = nullEinsKombi[i];
+            }
+
+            overallCounter++;
+            if (overallCounter%1000 == 0) {
+                let today = new Date();
+                let time = today.getHours() + ":" + today.getMinutes() + ":" + today.getSeconds();
+                console.log(overallCounter + " - " + time)
+
+                let filename = "brute-force_" + i + ".txt";
+                let text = "AktNullEinsKombi: " + nullEinsKombi[i]+ "\nBestNullEinsKombi: " + best_null_eins_kombi + "\nOverallCounter: " + overallCounter + "\nBest Deviation: " + best_deviation + "\nStart: " + best_left_point/4+ "\nEnd: " + best_right_point/4;
+                let element = document.createElement('a');
+                element.setAttribute('href', 'data:text/plain;charset=utf-8,' + encodeURIComponent(text));
+                element.setAttribute('download', filename);
+
+                element.style.display = 'none';
+                document.body.appendChild(element);
+
+                element.click();
+
+                document.body.removeChild(element);
+            }
+        }
+
+        console.log("Result:");
+        console.log(best_null_eins_kombi);
+        console.log(best_deviation);
+        console.log(best_left_point/4 + ':' + best_right_point/4);
+        //drawHighlights();
+    });
+
+    $("#brute-force").click(function(){
+        bruteForceSmallGetCombinedPointsDeviationsForActiveArea();
+        drawHighlights();
+    });
+
+        function showausw(k,n,wdh,rfg) {
+            ausw(k,n,wdh,rfg);
+        }
+
+
+        function ausw(k,n,wdh,rfg)  { var b="";
+            ANZ=0;
+
+            aw(k,n,b,wdh,rfg);
+
+        }
+
+        function aw(k,n,b,wdh,rfg)  {if(b.length==k) { nullEinsKombi.push(b); ANZ++;}
+        else for(var i=0;i<n;i++)
+            { if(!wdh)  if(alt(i,b)) continue;
+                if(!rfg)  if(kleiner(i,b)) continue;
+                aw(k,n,b+i,wdh,rfg);
+            }
+
+        }
+
+
+        function alt(n,b) {var e=b.length;
+            for(var i=0;i<e;i++) if(b.charAt(i)==n) return(1);
+            return(0);
+        }
+
+        function kleiner(n,b) {var e=b.length;
+            for(var i=0;i<e;i++) if(b.charAt(i)>n) return(1);
+            return(0);
+        }
+
+        $("#active-export").click(function(){
+        let start = getTimeFromPixel(highlight_start[active_highlight]);
+        let end = getTimeFromPixel(highlight_end[active_highlight]);
+        let days = "";
+        for(let i = 0; i < visibileStatus.length; i++) {
+            //console.log(visibileStatus[i]);
+            if (visibileStatus[i]) {
+                days = days + filterDates[i] + ", ";
+            }
+        }
+
+        let filename = "vis_" + start + "-" + end + ".txt";
+        let text = "Start: " + start + "\nEnd: " + end + "\nDays: " + days;
+        let element = document.createElement('a');
+        element.setAttribute('href', 'data:text/plain;charset=utf-8,' + encodeURIComponent(text));
+        element.setAttribute('download', filename);
+
+        element.style.display = 'none';
+        document.body.appendChild(element);
+
+        element.click();
+
+        document.body.removeChild(element);
+
+        highlight_active[active_highlight] = 2;
+        $('#options').hide();
+        drawHighlights()
+    });
+
+    $('#active-left-plus').click(function() {
+        highlight_start[active_highlight] += 10;
+        drawHighlights()
+    });
+
+    $('#active-left-minus').click(function() {
+        highlight_start[active_highlight] -= 10;
+        drawHighlights()
+    });
+
+    $('#active-right-plus').click(function() {
+        highlight_end[active_highlight] += 10;
+        drawHighlights()
+    });
+
+    $('#active-right-minus').click(function() {
+        highlight_end[active_highlight] -= 10;
+        drawHighlights()
+    });
+
+    $(document).keyup(function(e) {
+        if (e.keyCode === 46) {
+            $('#active-delete').trigger("click");
+        } else if (e.keyCode === 81) {
+            $('#active-left-minus').trigger("click");
+        } else if (e.keyCode === 87) {
+            $('#active-left-plus').trigger("click");
+        }else if (e.keyCode === 83) {
+            $('#active-right-plus').trigger("click");
+        } else if (e.keyCode === 65) {
+            $('#active-right-minus').trigger("click");
+        } else if (e.keyCode === 45) {
+            $('#active-export').trigger("click");
+        }
+
+    });
+
+    function getTimeFromPixel(pixel)
+    {
+        pixel=pixel-55;
+        minutes = (pixel/10)*15; // pixel/10 => count of 15min intervals
+        hours = Math.floor(minutes/60);
+        minutes_left = Math.floor(minutes%60);
+        if(minutes_left < 10) {
+            minutes_left = "0"+minutes_left
+        }
+        return hours+":"+minutes_left
+    }
+
+    function getPointsInAreaForAllDays()
+    {
+        let left = highlight_start[active_highlight];
+        let right = highlight_end[active_highlight];
+
+        // -55 to get the with of the chart without y axis lable
+        let start_part = (left-55)/10;
+        let end_part = (right-55)/10;
+
+        let days = data[0][0].length-1;
+        let part_values = [[],[],[]];
+
+        for(let c = 0; c <= 2; c++) {
+            if(data[c].length > 0) {
+                for (let j = 0; j < days; j++) {
+                    part_values[c].push([]);
+                    for (var i = start_part; i <= end_part; i++) {
+                        part_values[c][j].push(data[c][i][j + 1]);
+                    }
+                }
+            }
+        }
+        return part_values;
+    }
+
+
+    function getOverallPointsStandardDeviations(pointsData)
+    {
+        let days = pointsData[0].length-1;
+        let part_values = [];
+        for(var j = 0; j < days; j++) {
+            part_values.push([]);
+            for (var i = 0; i < 96; i++) {
+                part_values[j].push(pointsData[i][j+1]);
+            }
+        }
+
+        let deviations = [];
+
+        for(var i = 0; i < part_values.length; i++) {
+            let deviation = calculateStandardDeviation(part_values[i]);
+            deviations.push(deviation);
+        }
+
+        return deviations;
+    }
+
+    function getPointsDeviationsForActiveArea()
+    {
+        let deviations = [];
+        let part_values = getPointsInAreaForAllDays();
+
+        for(let c = 0; c <= 2; c++) {
+            let daysDeviations = [];
+            for (var i = 0; i < part_values[c].length; i++) {
+                let deviation = calculateStandardDeviation(part_values[c][i]);
+                daysDeviations.push(deviation);
+            }
+            deviations.push(daysDeviations);
+        }
+
+        return deviations;
+    }
+
+    function getCombinedOverallPointsStandardDeviations(pointsData)
+    {
+        let days = pointsData[0].length-1;
+        let part_values = [];
+        for(var j = 0; j < days; j++) {
+            if (visibileStatus[j]) {
+                for (var i = 0; i < 96; i++) {
+                    part_values.push(pointsData[i][j + 1]);
+                }
+            }
+        }
+
+        return calculateStandardDeviation(part_values);
+    }
+
+    function getCombinedPointsDeviationsForActiveArea()
+    {
+        let deviations = [];
+        let part_values = getPointsInAreaForAllDays();
+
+        for(let c = 0; c <= 2; c++) {
+            let daysDeviations = [];
+            let sum_point_values = [];
+            for (var i = 0; i < part_values[c].length; i++) {
+                if (visibileStatus[i]) {
+                    sum_point_values = sum_point_values.concat(part_values[c][i]);
+                }
+            }
+            let deviation = calculateStandardDeviation(sum_point_values);
+            daysDeviations.push(deviation);
+            deviations.push(daysDeviations);
+        }
+
+        return deviations;
+    }
+
+        function demo(f,anzeigen) {
+
+            if(anzeigen&&(f.ges.value<10)&&(f.erg.value<1000))showausw(f.anz.value,f.ges.value,f.wdh[0].checked,f.rfg[0].checked);
+        }
+
+    function bruteForceGetCombinedPointsDeviationsForActiveArea()
+    {
+        let deviation_average = 0;
+        let best_deviation = 1;
+        let best_left_point = 0;
+        let best_right_point = 0;
+
+        let back_counter = 4;
+        for(let m=0; m < 96; m++) {
+
+            for(let n=back_counter; n <96; n++) {
+                let part_values = bruteForceGetPointsInAreaForAllDays(m, n);
+
+                for(let c = 0; c <= 2; c++) {
+                    let daysDeviations = [];
+                    let sum_point_values = [];
+                    for (var i = 0; i < part_values[c].length; i++) {
+                        if (parseInt(visibileStatus[i])) {
+                            sum_point_values = sum_point_values.concat(part_values[c][i]);
+                        }
+                    }
+                    let deviation = calculateStandardDeviation(sum_point_values);
+                    deviation_average = deviation_average + deviation;
+                }
+
+                deviation_average = deviation_average / 3; // three differend kind of data
+                //console.log("Start: " + m + " - End: " + n);
+                if (deviation_average < best_deviation) {
+                    best_deviation = deviation_average;
+                    best_left_point = m;
+                    best_right_point = n;
+                }
+
+            }
+
+
+            back_counter++;
+        }
+
+
+        //console.log(best_deviation);
+        //console.log(best_left_point/4 + ':' + best_right_point/4);
+
+        //console.log(highlight_start[active_highlight]);
+        //console.log(highlight_end[active_highlight]);
+
+
+        highlight_start.push(best_left_point*10+55);
+        highlight_end.push(best_right_point*10+55);
+
+        for(let i=0; i<highlight_active.length;i++) {
+            if (highlight_active[i] != 2) {
+                highlight_active[i] = 0;
+            }
+        }
+        highlight_active.push(1);
+        active_highlight = highlight_active.length-1;
+        $('#options').show();
+
+        return [best_deviation, best_left_point, best_right_point];
+    }
+
+
+        function bruteForceSmallGetCombinedPointsDeviationsForActiveArea()
+        {
+            let deviation_average = 0;
+            let best_deviation = 1;
+            let best_left_point = 0;
+            let best_right_point = 0;
+
+            let back_counter = 4;
+            for(let m=0; m < 96; m++) {
+
+                for(let n=back_counter; n <96; n++) {
+                    let part_values = bruteForceGetPointsInAreaForAllDays(m, n);
+
+                    for(let c = 0; c <= 2; c++) {
+                        let daysDeviations = [];
+                        let sum_point_values = [];
+                        for (var i = 0; i < part_values[c].length; i++) {
+                            if (visibileStatus[i]) {
+                                sum_point_values = sum_point_values.concat(part_values[c][i]);
+                            }
+                        }
+                        let deviation = calculateStandardDeviation(sum_point_values);
+                        deviation_average = deviation_average + deviation;
+                    }
+
+                    deviation_average = deviation_average / 3; // three differend kind of data
+                    console.log("Start: " + m + " - End: " + n);
+                    if (deviation_average < best_deviation) {
+                        best_deviation = deviation_average;
+                        best_left_point = m;
+                        best_right_point = n;
+                    }
+
+                }
+
+
+                back_counter++;
+            }
+
+
+            //console.log(best_deviation);
+            //console.log(best_left_point/4 + ':' + best_right_point/4);
+
+            //console.log(highlight_start[active_highlight]);
+            //console.log(highlight_end[active_highlight]);
+
+
+            highlight_start.push(best_left_point*10+55);
+            highlight_end.push(best_right_point*10+55);
+
+            for(let i=0; i<highlight_active.length;i++) {
+                if (highlight_active[i] != 2) {
+                    highlight_active[i] = 0;
+                }
+            }
+            highlight_active.push(1);
+            active_highlight = highlight_active.length-1;
+            $('#options').show();
+
+            return [best_deviation, best_left_point, best_right_point];
+        }
+
+    function bruteForceGetPointsInAreaForAllDays(left_point, right_point)
+    {
+        let start_part = left_point;
+        let end_part = right_point;
+
+        let days = data[0][0].length-1;
+        let part_values = [[],[],[]];
+
+        for(let c = 0; c <= 2; c++) {
+            if(data[c].length > 0) {
+                for (let j = 0; j < days; j++) {
+                    part_values[c].push([]);
+                    for (var i = start_part; i <= end_part; i++) {
+                        part_values[c][j].push(data[c][i][j + 1]);
+                    }
+                }
+            }
+        }
+        return part_values;
+    }
+
+    function calculateStandardDeviation(pointsData) {
+        let sum = 0;
+        for(let i = 0; i < pointsData.length; i++) {
+            sum += pointsData[i];
+        }
+
+        let average = sum/pointsData.length;
+
+        let varianz = 0;
+
+        for(let i = 0; i < pointsData.length; i++) {
+            varianz += (pointsData[i]-average)*(pointsData[i]-average);
+        }
+        varianz = varianz/pointsData.length;
+
+        return Math.sqrt(varianz);
+    }
+
+    function renderChart(addLedgend, div_name) {
+
+        // A basic sinusoidal data series.
+        data[div_name] = [];
+        result = chartData[div_name][0];
+
+        let labelsValue = ['Date'];
+        firstEntry = true;
+
+        let checked = 'checked';
+        let visible = true;
+        let maxValue = 0;
+        let randomColors = ["#ebdb34", "#b81603", "#ed9e00", "#d85558", "#e60ed3", "#c6dd68", "#804a18", "#6e6d6b", "#71e183", "#d55062", "#3215d4", "#18286d", "#73f0da", "#584b28", "#18ff18", "#8abf31", "#bf2748", "#7a0bbf", "#000000", "#ff9b15", "#ff8be3", "#cbb5ff", "#3eff8e", "#bf6b1c", "#191a85", "#34fffc", "#ffb0a8"];
+        // Shift one portion out of line.
+        let daysNames = ['Su', 'Mo', 'Tue', 'We', 'Th', 'Fr', 'Sa'];
+
+        for (var i = 0; i < 96; i++) {
+            dataRow = [];
+            let datesCounter = 0;
+            for (const [key, value] of Object.entries(result[i])) {
+                //if (key != 'date') {
+
+                if(key == "") {
+                    dataRow.push(new Date('1970-01-01 ' + value));
+                } else {
+                    if (firstEntry) {
+                        labelsValue.push(key);
+                        if (first_render) {
+                            visibileStatus.push(visible);
+                        }
+                        if (addLedgend && div_name == 0) {
+                            let date = new Date(key);
+                            filterDates.push(key);
+                            $('#ledgend .days').append('<input type="checkbox" class="timeseries" name="series_' + key + '" value="" id="series_' + datesCounter + '" ' + checked + '> <p class="ledgendItem date_'+key+'"><small style="background-color:'+randomColors[datesCounter]+'"></small><b style="width:35px;display:inline-block">' + daysNames[date.getDay()] + ':</b>' +  key + '</p><div style="clear: both;"></div>')
+                        }
+                        checked = '';
+                        visible = false,
+                        datesCounter++;
+                    }
+                    let actValue = 0;
+                    if (value != -1) {
+                        if (value.includes("E-")) {
+                            actValue = 0;
+                        } else {
+                            actValue = value;
+                        }
+                    }
+                    if(maxValue < actValue) {
+                       //console.log(maxValue);
+                        maxValue = actValue;
+                    }
+                    dataRow.push(parseFloat(actValue));
+                }
+                //}
+            }
+            firstEntry = false;
+            data[div_name].push(dataRow);
+
+
+        }
+        //for each day the deviation calulation
+        //overall_points_data_deviations[div_name] = getOverallPointsStandardDeviations(data[div_name]);
+        combined_overall_points_data_deviations[div_name] = getCombinedOverallPointsStandardDeviations(data[div_name]);
+
+        if (addLedgend && div_name == 0) {
+            $('#ledgend input').change(function () {
+
+                var hiddenId = $(this).attr('id').replace("series_", "");
+                if (visibileStatus[hiddenId]) {
+                    visibileStatus[hiddenId] = false;
+                } else {
+                    visibileStatus[hiddenId] = true;
+                }
+                renderChart(false, 0);
+                drawHighlights();
+            });
+        }
+
+        g = new Dygraph(
+            document.getElementById("div_"+div_name),
+            data[div_name],
+            {
+                labels: labelsValue,
+                visibility: visibileStatus,
+                animatedZooms: false,
+                colors: randomColors,
+                valueRange: [0,maxValue],
+                drawPoints: true,
+                pointSize:3,
+                highlightSeriesOpts: {
+                    /*strokeWidth: 3,
+                    strokeBorderWidth: 1,*/
+                    highlightCircleSize:4
+                },
+                strokeWidth: 2,
+                axes: {
+                    x: {
+                        axisLabelWidth: 70,
+                        axisLabelFormatter: function(d, gran) {
+                            return zeropad(d.getHours()) + ":"
+                                + zeropad(d.getMinutes());
+                        },
+
+                        valueFormatter: function (ms) {
+                            let date = new Date(ms);
+                            let mintues = date.getUTCMinutes();
+                            //console.log(date.getDate());
+                            if(mintues == '0') {
+                                mintues = '00';
+                            }
+                            return '<b>Uhrzeit: ' + date.getHours() + ':' + mintues + '</b>';
+                        }
+                    }
+                },
+                zoomCallback:function(start,end,yRanges){
+                    this.updateOptions({
+                        dateWindow: null
+                    });
+
+                    if(start != '-3600000') {
+                        let bottom_left = g.toDomCoords(start, -20);
+                        let top_right = g.toDomCoords(end, -20);
+
+                        // need values with modulo 10 = 0, so that it matches to 15 minute intervals
+                        let start_pos = Math.round(bottom_left[0])-(Math.round(bottom_left[0])-55)%10;
+                        let end_pos = Math.round(top_right[0])+(10-Math.round(top_right[0])-55)%10;
+
+                        highlight_start.push(start_pos);
+                        highlight_end.push(end_pos);
+
+                        for(let i=0; i<highlight_active.length;i++) {
+                            if (highlight_active[i] != 2) {
+                                highlight_active[i] = 0;
+                            }
+                        }
+                        highlight_active.push(1);
+                        active_highlight = highlight_active.length-1;
+                        $('#options').show();
+                    }
+                    drawHighlights();
+                },
+                underlayCallback: function(canvas, area, g) {
+                        var bottom_left = g.toDomCoords(0, -20);
+                        var top_right = g.toDomCoords(0, +20);
+
+                        var left = bottom_left[0];
+                        var right = top_right[0];
+
+                        canvas.fillStyle = "rgba(255, 255, 102, 1.0)";
+                        canvas.fillRect(left, area.y, right - left, area.h);
+                },
+                clickCallback: function(e, x, pts) {
+                    checkHighlightOnClick(e,x,pts);
+                },
+                highlightCallback: function(event, x, points, row, seriesName) {
+                    jQuery('.ledgendItem').removeClass('active-line');
+                    jQuery('.ledgendItem.date_'+seriesName).addClass("active-line");
+                }
+
+            }
+        );
+
+        function zeropad(x) {
+            return (x < 10) ? '0' + x : x;
+        }
+
+        first_render = 0;
+    }
+
+}
+);
+</script>
+<body>
+<h1 style="font-family:arial;">Timeseries Visualization: </h1>
+<p>Recommended Browsers for using this tool are Chrome and Firefox</p>
+<div id="firstInputHolder">
+<p class="csvText">Primary CSV File:</p>
+<select id="type_0">
+    <option value="Accelerometer" selected>Accelerometer</option>
+    <option value="Noise">Noise</option>
+    <option value="Light">Light</option>
+</select>
+<input type="file" class="firstFileInput" multiple />
+</div>
+<div style="clear: both;"></div>
+<div id="secondInputHolder">
+<p class="csvText">Second CSV File:</p>
+<select id="type_1">
+    <option value="Accelerometer">Accelerometer</option>
+    <option value="Noise" selected>Noise</option>
+    <option value="Light">Light</option>
+</select>
+    <input type="file" class="secondFileInput" multiple />
+</div>
+<div style="clear: both;"></div>
+<div id="thirdInputHolder">
+<p class="csvText">Third CSV File:</p>
+<select id="type_2">
+    <option value="Accelerometer">Accelerometer</option>
+    <option value="Noise">Noise</option>
+    <option value="Light" selected>Light</option>
+</select>
+
+    <input type="file" class="thirdFileInput" multiple />
+
+</div>
+<a id="brute-force-all" class="size-options" style="width:110px;padding:2px;">Brute Force</a>
+<div style="clear: both;"></div>
+<div id="div_0"></div>
+    <div id="ledgend">
+        <b style="font-size:18px;">Filter days:</b>
+        <div  style="margin-top:10px;" class="days"></div>
+    </div>
+    <div id="options">
+        <b style="font-size:18px;">Selected Area (green):</b>
+        <div id="sizes" style="margin-top:10px;">
+            Start Time:
+            <a id="left-border-value"></a>
+            <a id="active-left-minus" class="size-options"  >-</a>
+            <a id="active-left-plus" class="size-options" >+</a>
+            <div style="clear: both;"></div>
+            <br />
+            End Time:
+            <a id="right-border-value"></a>
+            <a id="active-right-minus" class="size-options" >-</a>
+            <a id="active-right-plus" class="size-options" >+</a>
+            <div style="clear: both;"></div>
+            <br />
+            <a id="active-export" class="size-options" style="width:110px;padding:2px;">Export Data</a>
+            <a id="active-delete" class="size-options" style="width:110px;padding:2px;">Delete Area</a>
+            <a id="brute-force" class="size-options" style="width:110px;padding:2px;">Brute Force</a>
+            <br /><br /><br />
+            <u>Overall vs Area Standard Deviations:</u>
+            <div id="deviations" style="margin-top:20px;">
+
+            </div>
+        </div>
+    </div>
+    <div style="clear: both;"></div>
+    <div id="highlight"></div>
+<br />
+<br />
+<div id="div_1"></div>
+<br />
+<br />
+<div style="clear: both;"></div>
+<div id="div_2"></div>
+<br />
+<br />
+</body>
+</html> 
